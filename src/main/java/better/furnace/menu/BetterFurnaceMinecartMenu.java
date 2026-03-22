@@ -44,7 +44,7 @@ public class BetterFurnaceMinecartMenu extends AbstractContainerMenu {
 		container.startOpen(playerInventory.player);
 
 		// 动力矿车燃料槽（居中）
-		this.addSlot(new Slot(container, SLOT_FUEL, 80, 48) {
+		this.addSlot(new Slot(container, SLOT_FUEL, 80, 46) {
 			@Override
 			public boolean mayPlace(ItemStack stack) {
 				return AbstractFurnaceBlockEntity.isFuel(stack);

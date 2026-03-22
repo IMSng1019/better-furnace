@@ -27,7 +27,7 @@ public final class BetterFurnaceTrainManager {
 	private static final double MAX_LINK_DISTANCE_SQR = 64.0D;
 	private static final double MIN_LINK_DISTANCE_SQR = 0.64D;
 	private static final double MAX_COLLISION_LINK_DISTANCE_SQR = 6.25D;
-	private static final double FOLLOW_SPACING = 1.1D;
+	private static final double FOLLOW_SPACING = 1.0D;
 
 	private BetterFurnaceTrainManager() {
 	}
@@ -179,38 +179,90 @@ public final class BetterFurnaceTrainManager {
 			return;
 		}
 
-		Vec3 target = samplePathPoint(leader.position(), leaderAccess.betterFurnace$getTrackHistory(), FOLLOW_SPACING);
+		PathSample sample = samplePath(leader.position(), leaderAccess.betterFurnace$getTrackHistory(), FOLLOW_SPACING);
+		Vec3 target = sample.point();
+		Vec3 tangent = sample.tangent();
 		Vec3 delta = target.subtract(follower.position());
 		double horizontal = Math.sqrt(delta.x * delta.x + delta.z * delta.z);
 		if (horizontal < 1.0E-3D) {
 			return;
 		}
 
-		// Preserve vanilla collision response: follow by velocity correction, not hard position lock.
+		Vec3 leaderMotion = leader.getDeltaMovement();
+		double leaderAlong = leaderMotion.x * tangent.x + leaderMotion.z * tangent.z;
+		if (leaderAlong < 0.0D) {
+			tangent = tangent.scale(-1.0D);
+			leaderAlong = -leaderAlong;
+		}
+
 		Vec3 current = follower.getDeltaMovement();
-		double correctionX = Mth.clamp(delta.x * 0.12D, -0.25D, 0.25D);
-		double correctionZ = Mth.clamp(delta.z * 0.12D, -0.25D, 0.25D);
-		Vec3 corrected = new Vec3(current.x * 0.85D + correctionX, current.y, current.z * 0.85D + correctionZ);
-		follower.setDeltaMovement(corrected);
+		double alongError = delta.x * tangent.x + delta.z * tangent.z;
+		Vec3 lateral = new Vec3(
+			delta.x - tangent.x * alongError,
+			0.0D,
+			delta.z - tangent.z * alongError
+		);
+
+		double currentAlong = current.x * tangent.x + current.z * tangent.z;
+		double desiredAlong = Math.max(0.0D, leaderAlong + Mth.clamp(alongError * 0.20D, -0.16D, 0.34D));
+		double nextAlong = currentAlong + (desiredAlong - currentAlong) * 0.36D;
+
+		double lateralX = Mth.clamp(lateral.x * 0.22D, -0.26D, 0.26D);
+		double lateralZ = Mth.clamp(lateral.z * 0.22D, -0.26D, 0.26D);
+		Vec3 nextHorizontal = tangent.scale(nextAlong).add(lateralX, 0.0D, lateralZ);
+
+		double forward = nextHorizontal.x * tangent.x + nextHorizontal.z * tangent.z;
+		if (forward < 0.0D) {
+			nextHorizontal = nextHorizontal.subtract(tangent.scale(forward));
+		}
+
+		double leaderSpeed = Math.sqrt(leaderMotion.x * leaderMotion.x + leaderMotion.z * leaderMotion.z);
+		double maxSpeed = Math.max(leaderSpeed + 0.16D, 0.75D);
+		double horizontalSpeed = Math.sqrt(nextHorizontal.x * nextHorizontal.x + nextHorizontal.z * nextHorizontal.z);
+		if (horizontalSpeed > maxSpeed) {
+			nextHorizontal = nextHorizontal.scale(maxSpeed / horizontalSpeed);
+		}
+
+		follower.setDeltaMovement(nextHorizontal.x, current.y, nextHorizontal.z);
 	}
 
-	private static Vec3 samplePathPoint(Vec3 fallback, Deque<Vec3> history, double distance) {
-		if (history.isEmpty()) {
-			return fallback;
+	private static PathSample samplePath(Vec3 fallback, Deque<Vec3> history, double distance) {
+		if (history.size() < 2) {
+			return new PathSample(fallback, new Vec3(1.0D, 0.0D, 0.0D));
 		}
 
-		Vec3 last = null;
+		Vec3 newer = null;
 		double walked = 0.0D;
 		for (Vec3 point : history) {
-			if (last != null) {
-				walked += point.distanceTo(last);
-				if (walked >= distance) {
-					return point;
+			if (newer != null) {
+				Vec3 segment = point.subtract(newer);
+				double len = segment.length();
+				if (len > 1.0E-6D) {
+					if (walked + len >= distance) {
+						double t = (distance - walked) / len;
+						Vec3 target = newer.add(segment.scale(t));
+						Vec3 tangent = normalizeHorizontal(newer.subtract(point));
+						return new PathSample(target, tangent);
+					}
+					walked += len;
 				}
 			}
-			last = point;
+			newer = point;
 		}
-		return history.getLast();
+
+		Vec3 oldest = history.getLast();
+		Vec3 newest = history.getFirst();
+		Vec3 fallbackTangent = normalizeHorizontal(newest.subtract(oldest));
+		return new PathSample(oldest, fallbackTangent);
+	}
+
+	private static Vec3 normalizeHorizontal(Vec3 vector) {
+		double horizontalSqr = vector.x * vector.x + vector.z * vector.z;
+		if (horizontalSqr < 1.0E-6D) {
+			return new Vec3(1.0D, 0.0D, 0.0D);
+		}
+		double invLen = 1.0D / Math.sqrt(horizontalSqr);
+		return new Vec3(vector.x * invLen, 0.0D, vector.z * invLen);
 	}
 
 	private static void link(AbstractMinecart from, AbstractMinecart to) {
@@ -416,6 +468,9 @@ public final class BetterFurnaceTrainManager {
 			return minecart;
 		}
 		return null;
+	}
+
+	private record PathSample(Vec3 point, Vec3 tangent) {
 	}
 
 	private static final class LinkCandidate {

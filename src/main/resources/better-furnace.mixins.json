@@ -3,7 +3,9 @@
 	"package": "better.furnace.mixin",
 	"compatibilityLevel": "JAVA_17",
 	"mixins": [
-		"ExampleMixin"
+		"AbstractMinecartMixin",
+		"EntityMixin",
+		"MinecartFurnaceMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

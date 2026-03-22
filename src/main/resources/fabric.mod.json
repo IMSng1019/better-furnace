@@ -2,14 +2,15 @@
 	"schemaVersion": 1,
 	"id": "better-furnace",
 	"version": "${version}",
-	"name": "better furnace",
-	"description": "This is an example description! Tell everyone what your mod is about!",
+	"name": "Better Furnace",
+	"description": "Server-first furnace minecart overhaul: train coupling, braking mode, GUI fuel slot, chunk loading and portal group teleport.",
 	"authors": [
-		"Me!"
+		"Yu Xiaowu",
+		"Codex Assistant"
 	],
 	"contact": {
 		"homepage": "https://fabricmc.net/",
-		"sources": "https://github.com/FabricMC/fabric-example-mod"
+		"sources": "https://example.invalid/better-furnace"
 	},
 	"license": "CC0-1.0",
 	"icon": "assets/better-furnace/icon.png",
@@ -33,7 +34,7 @@
 		}
 	],
 	"depends": {
-		"fabricloader": ">=0.18.4",
+		"fabricloader": ">=0.16.10",
 		"minecraft": "~1.20.4",
 		"java": ">=17",
 		"fabric-api": "*"

@@ -16,7 +16,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * 列车链接/跟随/碰撞忽略/整组传送 的核心管理器。
+ * Core manager for train linking, follow pathing, collision suppression, and group teleport.
  */
 public final class BetterFurnaceTrainManager {
 	private static final ThreadLocal<Boolean> GROUP_TELEPORTING = ThreadLocal.withInitial(() -> false);
@@ -25,7 +25,9 @@ public final class BetterFurnaceTrainManager {
 	private static final int MAX_TRAIN_SCAN = 128;
 	private static final int LINK_COOLDOWN_TICKS = 20;
 	private static final double MAX_LINK_DISTANCE_SQR = 64.0D;
-	private static final double FOLLOW_SPACING = 1.25D;
+	private static final double MIN_LINK_DISTANCE_SQR = 0.64D;
+	private static final double MAX_COLLISION_LINK_DISTANCE_SQR = 6.25D;
+	private static final double FOLLOW_SPACING = 1.1D;
 
 	private BetterFurnaceTrainManager() {
 	}
@@ -42,21 +44,18 @@ public final class BetterFurnaceTrainManager {
 			access.betterFurnace$setLinkCooldown(access.betterFurnace$getLinkCooldown() - 1);
 		}
 
+		validateLinks(minecart, access);
+		followPrevious(minecart, access);
+
 		Deque<Vec3> history = access.betterFurnace$getTrackHistory();
 		history.addFirst(minecart.position());
 		while (history.size() > MAX_HISTORY_POINTS) {
 			history.removeLast();
 		}
-
-		validateLinks(minecart, access);
-		followPrevious(minecart, access);
 	}
 
 	public static boolean shouldIgnoreCollision(AbstractMinecart self, Entity other) {
-		if (!(other instanceof AbstractMinecart otherMinecart)) {
-			return false;
-		}
-		return isSameTrain(self, otherMinecart);
+		return false;
 	}
 
 	public static void tryLinkOnCollision(AbstractMinecart first, AbstractMinecart second) {
@@ -76,18 +75,13 @@ public final class BetterFurnaceTrainManager {
 			return;
 		}
 
-		AbstractMinecart firstHead = getHead(first);
-		AbstractMinecart firstTail = getTail(first);
-		AbstractMinecart secondHead = getHead(second);
-		AbstractMinecart secondTail = getTail(second);
-
 		LinkCandidate best = null;
 
-		if (getNextEntity(firstTail) == null && getPreviousEntity(secondHead) == null) {
-			best = LinkCandidate.pickBetter(best, new LinkCandidate(firstTail, secondHead));
+		if (canLinkFollowingVanillaRule(first, second)) {
+			best = LinkCandidate.pickBetter(best, new LinkCandidate(first, second));
 		}
-		if (getNextEntity(secondTail) == null && getPreviousEntity(firstHead) == null) {
-			best = LinkCandidate.pickBetter(best, new LinkCandidate(secondTail, firstHead));
+		if (canLinkFollowingVanillaRule(second, first)) {
+			best = LinkCandidate.pickBetter(best, new LinkCandidate(second, first));
 		}
 
 		if (best == null) {
@@ -192,15 +186,11 @@ public final class BetterFurnaceTrainManager {
 			return;
 		}
 
-		// 过远时直接纠偏，避免弯道时尾车丢失路径。
-		if (horizontal > 3.0D) {
-			follower.setPos(target.x, target.y, target.z);
-		}
-
+		// Preserve vanilla collision response: follow by velocity correction, not hard position lock.
 		Vec3 current = follower.getDeltaMovement();
-		double correctionX = Mth.clamp(delta.x * 0.25D, -0.7D, 0.7D);
-		double correctionZ = Mth.clamp(delta.z * 0.25D, -0.7D, 0.7D);
-		Vec3 corrected = new Vec3(current.x * 0.6D + correctionX, current.y, current.z * 0.6D + correctionZ);
+		double correctionX = Mth.clamp(delta.x * 0.12D, -0.25D, 0.25D);
+		double correctionZ = Mth.clamp(delta.z * 0.12D, -0.25D, 0.25D);
+		Vec3 corrected = new Vec3(current.x * 0.85D + correctionX, current.y, current.z * 0.85D + correctionZ);
 		follower.setDeltaMovement(corrected);
 	}
 
@@ -232,6 +222,7 @@ public final class BetterFurnaceTrainManager {
 		toAccess.betterFurnace$setPreviousUuid(from.getUUID());
 		fromAccess.betterFurnace$setLinkCooldown(LINK_COOLDOWN_TICKS);
 		toAccess.betterFurnace$setLinkCooldown(LINK_COOLDOWN_TICKS);
+		separateAfterLink(from, to);
 	}
 
 	private static void unlink(AbstractMinecart from, AbstractMinecart to) {
@@ -241,6 +232,66 @@ public final class BetterFurnaceTrainManager {
 		if (to instanceof BetterFurnaceTrainAccess toAccess && from.getUUID().equals(toAccess.betterFurnace$getPreviousUuid())) {
 			toAccess.betterFurnace$setPreviousUuid(null);
 		}
+	}
+
+	private static boolean canLinkFollowingVanillaRule(AbstractMinecart from, AbstractMinecart to) {
+		if (from == to) {
+			return false;
+		}
+		if (getNextEntity(from) != null || getPreviousEntity(to) != null) {
+			return false;
+		}
+		double distanceSqr = from.distanceToSqr(to);
+		if (distanceSqr < MIN_LINK_DISTANCE_SQR || distanceSqr > MAX_COLLISION_LINK_DISTANCE_SQR) {
+			return false;
+		}
+		return isVanillaCouplingAligned(from, to) && isForwardRelative(from, to);
+	}
+
+	private static boolean isVanillaCouplingAligned(AbstractMinecart from, AbstractMinecart to) {
+		Vec3 offset = new Vec3(to.getX() - from.getX(), 0.0D, to.getZ() - from.getZ());
+		if (offset.lengthSqr() < 1.0E-4D) {
+			return false;
+		}
+
+		Vec3 normal = offset.normalize();
+		Vec3 heading = getHorizontalHeading(from);
+		return Math.abs(normal.dot(heading)) >= 0.8D;
+	}
+
+	private static boolean isForwardRelative(AbstractMinecart from, AbstractMinecart to) {
+		Vec3 offset = new Vec3(to.getX() - from.getX(), 0.0D, to.getZ() - from.getZ());
+		if (offset.lengthSqr() < 1.0E-4D) {
+			return false;
+		}
+		Vec3 normal = offset.normalize();
+		Vec3 heading = getHorizontalHeading(from);
+		return normal.dot(heading) > 0.15D;
+	}
+
+	private static void separateAfterLink(AbstractMinecart leader, AbstractMinecart follower) {
+		double dx = follower.getX() - leader.getX();
+		double dz = follower.getZ() - leader.getZ();
+		double horizontalSqr = dx * dx + dz * dz;
+		if (horizontalSqr >= MIN_LINK_DISTANCE_SQR) {
+			return;
+		}
+
+		Vec3 back = getHorizontalHeading(leader).scale(-1.0D);
+		follower.push(back.x * 0.08D, 0.0D, back.z * 0.08D);
+		leader.push(-back.x * 0.04D, 0.0D, -back.z * 0.04D);
+	}
+
+	private static Vec3 getHorizontalHeading(AbstractMinecart minecart) {
+		Vec3 movement = minecart.getDeltaMovement();
+		double horizontalSqr = movement.x * movement.x + movement.z * movement.z;
+		if (horizontalSqr > 1.0E-5D) {
+			double len = Math.sqrt(horizontalSqr);
+			return new Vec3(movement.x / len, 0.0D, movement.z / len);
+		}
+
+		float yawRad = minecart.getYRot() * 0.017453292F;
+		return new Vec3(Mth.cos(yawRad), 0.0D, Mth.sin(yawRad)).normalize();
 	}
 
 	private static boolean isSameTrain(AbstractMinecart first, AbstractMinecart second) {

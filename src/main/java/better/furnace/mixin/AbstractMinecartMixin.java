@@ -10,7 +10,6 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -38,30 +37,14 @@ public abstract class AbstractMinecartMixin implements BetterFurnaceTrainAccess 
 		BetterFurnaceTrainManager.tick((AbstractMinecart) (Object) this);
 	}
 
-	@Inject(method = "push", at = @At("HEAD"), cancellable = true)
+	@Inject(method = "push", at = @At("HEAD"))
 	private void betterFurnace$onPush(Entity entity, CallbackInfo ci) {
 		AbstractMinecart self = (AbstractMinecart) (Object) this;
 		if (!(entity instanceof AbstractMinecart otherMinecart)) {
 			return;
 		}
 
-		if (BetterFurnaceTrainManager.shouldIgnoreCollision(self, entity)) {
-			ci.cancel();
-			return;
-		}
-
 		BetterFurnaceTrainManager.tryLinkOnCollision(self, otherMinecart);
-		if (BetterFurnaceTrainManager.shouldIgnoreCollision(self, entity)) {
-			ci.cancel();
-		}
-	}
-
-	@Inject(method = "canCollideWith", at = @At("HEAD"), cancellable = true)
-	private void betterFurnace$ignoreLinkedCollision(Entity entity, CallbackInfoReturnable<Boolean> cir) {
-		AbstractMinecart self = (AbstractMinecart) (Object) this;
-		if (BetterFurnaceTrainManager.shouldIgnoreCollision(self, entity)) {
-			cir.setReturnValue(false);
-		}
 	}
 
 	@Override

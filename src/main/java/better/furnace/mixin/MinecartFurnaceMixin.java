@@ -354,7 +354,9 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements W
 		if (this.betterFurnace$mode == BetterFurnaceMinecartMode.ACCELERATE) {
 			this.betterFurnace$braking = false;
 			burning = betterFurnace$consumeBurnTick(false);
-			if (!burning && this.fuel <= 0) {
+			if (burning) {
+				betterFurnace$setForwardPushFromFacingWhenIdle();
+			} else if (this.fuel <= 0) {
 				this.xPush = 0.0D;
 				this.zPush = 0.0D;
 			}
@@ -435,6 +437,18 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements W
 		double len = Math.sqrt(horizontal);
 		this.xPush = -movement.x / len;
 		this.zPush = -movement.z / len;
+	}
+
+	private void betterFurnace$setForwardPushFromFacingWhenIdle() {
+		double movementSqr = this.getDeltaMovement().horizontalDistanceSqr();
+		double pushSqr = this.xPush * this.xPush + this.zPush * this.zPush;
+		if (movementSqr > 1.0E-4D || pushSqr > 1.0E-7D) {
+			return;
+		}
+
+		double yawRad = Math.toRadians(this.getYRot());
+		this.xPush = -Math.sin(yawRad);
+		this.zPush = Math.cos(yawRad);
 	}
 
 	private boolean betterFurnace$tryInsertFuelFromPlayer(Player player, ItemStack held) {

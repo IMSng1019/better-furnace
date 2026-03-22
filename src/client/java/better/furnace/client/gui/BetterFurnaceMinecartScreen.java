@@ -36,7 +36,7 @@ public class BetterFurnaceMinecartScreen extends AbstractContainerScreen<BetterF
 
 		if (this.menu.isLit()) {
 			int flame = this.menu.getLitProgress();
-			guiGraphics.blit(TEXTURE, left + 81, top + 36 + 12 - flame, 176, 12 - flame, 14, flame + 1);
+			guiGraphics.blit(TEXTURE, left + 81, top + 34 + 12 - flame, 176, 12 - flame, 14, flame + 1);
 		}
 	}
 
@@ -48,10 +48,13 @@ public class BetterFurnaceMinecartScreen extends AbstractContainerScreen<BetterF
 		Component modeText = this.menu.getMode() == BetterFurnaceMinecartMode.DECELERATE
 			? Component.translatable("gui.better-furnace.mode.decelerate")
 			: Component.translatable("gui.better-furnace.mode.accelerate");
-		guiGraphics.drawString(this.font, modeText, 8, 73, 0x666666, false);
+		int modeX = this.imageWidth - 8 - this.font.width(modeText);
+		guiGraphics.drawString(this.font, modeText, modeX, 6, 0x666666, false);
 
 		if (this.menu.isBraking()) {
-			guiGraphics.drawString(this.font, Component.translatable("gui.better-furnace.braking"), 98, 73, 0xAA0000, false);
+			Component brakingText = Component.translatable("gui.better-furnace.braking");
+			int brakingX = this.imageWidth - 8 - this.font.width(brakingText);
+			guiGraphics.drawString(this.font, brakingText, brakingX, 16, 0xAA0000, false);
 		}
 	}
 }

@@ -1,0 +1,41 @@
+{
+	"schemaVersion": 1,
+	"id": "better-furnace",
+	"version": "${version}",
+	"name": "better furnace",
+	"description": "This is an example description! Tell everyone what your mod is about!",
+	"authors": [
+		"Me!"
+	],
+	"contact": {
+		"homepage": "https://fabricmc.net/",
+		"sources": "https://github.com/FabricMC/fabric-example-mod"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/better-furnace/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"better.furnace.BetterFurnace"
+		],
+		"client": [
+			"better.furnace.BetterFurnaceClient"
+		],
+		"fabric-datagen": [
+			"better.furnace.BetterFurnaceDataGenerator"
+		]
+	},
+	"mixins": [
+		"better-furnace.mixins.json",
+		{
+			"config": "better-furnace.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.18.4",
+		"minecraft": "~1.20.4",
+		"java": ">=17",
+		"fabric-api": "*"
+	}
+}

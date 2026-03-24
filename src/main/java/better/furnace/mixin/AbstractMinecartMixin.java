@@ -44,8 +44,9 @@ public abstract class AbstractMinecartMixin implements BetterFurnaceTrainAccess 
 			return;
 		}
 
+		boolean ignoreCollisionBeforeLink = BetterFurnaceTrainManager.shouldIgnoreCollision(self, otherMinecart);
 		BetterFurnaceTrainManager.tryLinkOnCollision(self, otherMinecart);
-		if (BetterFurnaceTrainManager.shouldIgnoreCollision(self, otherMinecart)) {
+		if (ignoreCollisionBeforeLink) {
 			ci.cancel();
 		}
 	}

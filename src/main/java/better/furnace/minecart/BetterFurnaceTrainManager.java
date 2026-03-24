@@ -311,7 +311,7 @@ public final class BetterFurnaceTrainManager {
 		if (distanceSqr < MIN_LINK_DISTANCE_SQR || distanceSqr > MAX_COLLISION_LINK_DISTANCE_SQR) {
 			return false;
 		}
-		return isVanillaCouplingAligned(from, to) && isForwardRelative(from, to);
+		return isVanillaCouplingAligned(from, to);
 	}
 
 	private static boolean isVanillaCouplingAligned(AbstractMinecart from, AbstractMinecart to) {
@@ -321,18 +321,21 @@ public final class BetterFurnaceTrainManager {
 		}
 
 		Vec3 normal = offset.normalize();
-		Vec3 heading = getHorizontalHeading(from);
+		Vec3 heading = getVanillaCouplingHeading(from);
 		return Math.abs(normal.dot(heading)) >= 0.8D;
 	}
 
-	private static boolean isForwardRelative(AbstractMinecart from, AbstractMinecart to) {
-		Vec3 offset = new Vec3(to.getX() - from.getX(), 0.0D, to.getZ() - from.getZ());
-		if (offset.lengthSqr() < 1.0E-4D) {
-			return false;
+	private static Vec3 getVanillaCouplingHeading(AbstractMinecart minecart) {
+		if (minecart instanceof MinecartFurnace furnace) {
+			double pushSqr = furnace.xPush * furnace.xPush + furnace.zPush * furnace.zPush;
+			if (pushSqr > 1.0E-7D) {
+				double invLen = 1.0D / Math.sqrt(pushSqr);
+				return new Vec3(furnace.xPush * invLen, 0.0D, furnace.zPush * invLen);
+			}
 		}
-		Vec3 normal = offset.normalize();
-		Vec3 heading = getHorizontalHeading(from);
-		return normal.dot(heading) > 0.15D;
+
+		float yawRad = minecart.getYRot() * 0.017453292F;
+		return new Vec3(Mth.cos(yawRad), 0.0D, Mth.sin(yawRad)).normalize();
 	}
 
 	private static void separateAfterLink(AbstractMinecart leader, AbstractMinecart follower) {

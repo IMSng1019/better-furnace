@@ -37,7 +37,7 @@ public abstract class AbstractMinecartMixin implements BetterFurnaceTrainAccess 
 		BetterFurnaceTrainManager.tick((AbstractMinecart) (Object) this);
 	}
 
-	@Inject(method = "push", at = @At("HEAD"))
+	@Inject(method = "push", at = @At("HEAD"), cancellable = true)
 	private void betterFurnace$onPush(Entity entity, CallbackInfo ci) {
 		AbstractMinecart self = (AbstractMinecart) (Object) this;
 		if (!(entity instanceof AbstractMinecart otherMinecart)) {
@@ -45,6 +45,9 @@ public abstract class AbstractMinecartMixin implements BetterFurnaceTrainAccess 
 		}
 
 		BetterFurnaceTrainManager.tryLinkOnCollision(self, otherMinecart);
+		if (BetterFurnaceTrainManager.shouldIgnoreCollision(self, otherMinecart)) {
+			ci.cancel();
+		}
 	}
 
 	@Override

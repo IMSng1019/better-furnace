@@ -26,6 +26,7 @@ public final class BetterFurnaceTrainManager {
 	private static final int LINK_COOLDOWN_TICKS = 20;
 	private static final double MAX_LINK_DISTANCE_SQR = 64.0D;
 	private static final double MIN_LINK_DISTANCE_SQR = 0.64D;
+	private static final double MIN_LINK_DISTANCE = Math.sqrt(MIN_LINK_DISTANCE_SQR);
 	private static final double MAX_COLLISION_LINK_DISTANCE_SQR = 6.25D;
 	private static final double FOLLOW_SPACING = 1.0D;
 
@@ -55,7 +56,19 @@ public final class BetterFurnaceTrainManager {
 	}
 
 	public static boolean shouldIgnoreCollision(AbstractMinecart self, Entity other) {
-		return false;
+		if (!(other instanceof AbstractMinecart otherMinecart)) {
+			return false;
+		}
+		if (!isSameTrain(self, otherMinecart)) {
+			return false;
+		}
+
+		// Let directly linked neighbors still collide when they are compressed too close,
+		// so the physics layer can separate them and reduce corner overlap.
+		if (isDirectlyLinked(self, otherMinecart)) {
+			return self.distanceToSqr(otherMinecart) >= MIN_LINK_DISTANCE_SQR;
+		}
+		return true;
 	}
 
 	public static void tryLinkOnCollision(AbstractMinecart first, AbstractMinecart second) {
@@ -223,6 +236,7 @@ public final class BetterFurnaceTrainManager {
 			nextHorizontal = nextHorizontal.scale(maxSpeed / horizontalSpeed);
 		}
 
+		nextHorizontal = applyNeighborSpacingGuard(follower, leader, nextHorizontal);
 		follower.setDeltaMovement(nextHorizontal.x, current.y, nextHorizontal.z);
 	}
 
@@ -334,6 +348,25 @@ public final class BetterFurnaceTrainManager {
 		leader.push(-back.x * 0.04D, 0.0D, -back.z * 0.04D);
 	}
 
+	private static Vec3 applyNeighborSpacingGuard(AbstractMinecart follower, AbstractMinecart leader, Vec3 proposed) {
+		Vec3 toLeader = new Vec3(leader.getX() - follower.getX(), 0.0D, leader.getZ() - follower.getZ());
+		double distanceSqr = toLeader.x * toLeader.x + toLeader.z * toLeader.z;
+		if (distanceSqr >= MIN_LINK_DISTANCE_SQR) {
+			return proposed;
+		}
+
+		Vec3 toward = normalizeHorizontal(toLeader);
+		double approachSpeed = proposed.x * toward.x + proposed.z * toward.z;
+		Vec3 guarded = proposed;
+		if (approachSpeed > 0.0D) {
+			guarded = guarded.subtract(toward.scale(approachSpeed));
+		}
+
+		double distance = Math.sqrt(Math.max(distanceSqr, 1.0E-6D));
+		double repel = Mth.clamp((MIN_LINK_DISTANCE - distance) * 0.45D, 0.0D, 0.18D);
+		return guarded.add(-toward.x * repel, 0.0D, -toward.z * repel);
+	}
+
 	private static Vec3 getHorizontalHeading(AbstractMinecart minecart) {
 		Vec3 movement = minecart.getDeltaMovement();
 		double horizontalSqr = movement.x * movement.x + movement.z * movement.z;
@@ -344,6 +377,18 @@ public final class BetterFurnaceTrainManager {
 
 		float yawRad = minecart.getYRot() * 0.017453292F;
 		return new Vec3(Mth.cos(yawRad), 0.0D, Mth.sin(yawRad)).normalize();
+	}
+
+	private static boolean isDirectlyLinked(AbstractMinecart first, AbstractMinecart second) {
+		if (!(first instanceof BetterFurnaceTrainAccess firstAccess) || !(second instanceof BetterFurnaceTrainAccess secondAccess)) {
+			return false;
+		}
+		UUID firstId = first.getUUID();
+		UUID secondId = second.getUUID();
+		return secondId.equals(firstAccess.betterFurnace$getPreviousUuid())
+			|| secondId.equals(firstAccess.betterFurnace$getNextUuid())
+			|| firstId.equals(secondAccess.betterFurnace$getPreviousUuid())
+			|| firstId.equals(secondAccess.betterFurnace$getNextUuid());
 	}
 
 	private static boolean isSameTrain(AbstractMinecart first, AbstractMinecart second) {

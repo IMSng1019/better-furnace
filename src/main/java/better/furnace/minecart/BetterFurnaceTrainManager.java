@@ -23,12 +23,16 @@ public final class BetterFurnaceTrainManager {
 
 	private static final int MAX_HISTORY_POINTS = 140;
 	private static final int MAX_TRAIN_SCAN = 128;
+	private static final int MAX_TRAIN_CARS = 4;
 	private static final int LINK_COOLDOWN_TICKS = 20;
 	private static final double MAX_LINK_DISTANCE_SQR = 64.0D;
 	private static final double MIN_LINK_DISTANCE_SQR = 0.64D;
 	private static final double MIN_LINK_DISTANCE = Math.sqrt(MIN_LINK_DISTANCE_SQR);
 	private static final double MAX_COLLISION_LINK_DISTANCE_SQR = 6.25D;
 	private static final double FOLLOW_SPACING = 1.0D;
+	private static final double REVERSE_PUSH_TRANSFER_SCALE = 0.05D;
+	private static final double REVERSE_PUSH_TRANSFER_MAX = 0.08D;
+	private static final double REVERSE_PUSH_TRANSFER_DOT = 0.35D;
 
 	private BetterFurnaceTrainManager() {
 	}
@@ -46,6 +50,7 @@ public final class BetterFurnaceTrainManager {
 		}
 
 		validateLinks(minecart, access);
+		transferReverseFurnacePush(minecart, access);
 		followPrevious(minecart, access);
 
 		Deque<Vec3> history = access.betterFurnace$getTrackHistory();
@@ -84,6 +89,9 @@ public final class BetterFurnaceTrainManager {
 		if (isSameTrain(first, second)) {
 			return;
 		}
+		if (countTrainCars(first) + countTrainCars(second) > MAX_TRAIN_CARS) {
+			return;
+		}
 		if (!containsFurnace(first) && !containsFurnace(second)) {
 			return;
 		}
@@ -102,6 +110,43 @@ public final class BetterFurnaceTrainManager {
 		}
 
 		link(best.from, best.to);
+	}
+
+	private static void transferReverseFurnacePush(AbstractMinecart minecart, BetterFurnaceTrainAccess access) {
+		if (!(minecart instanceof MinecartFurnace furnace)) {
+			return;
+		}
+
+		AbstractMinecart leader = resolveMinecart(minecart, access.betterFurnace$getPreviousUuid());
+		if (leader == null) {
+			return;
+		}
+
+		double pushSqr = furnace.xPush * furnace.xPush + furnace.zPush * furnace.zPush;
+		if (pushSqr <= 1.0E-7D) {
+			return;
+		}
+
+		Vec3 pushDir = new Vec3(furnace.xPush, 0.0D, furnace.zPush).normalize();
+		Vec3 towardLeader = normalizeHorizontal(leader.position().subtract(minecart.position()));
+		double towardDot = pushDir.dot(towardLeader);
+		if (towardDot < REVERSE_PUSH_TRANSFER_DOT) {
+			return;
+		}
+
+		AbstractMinecart head = getHead(minecart);
+		if (head == minecart) {
+			return;
+		}
+
+		Vec3 headForward = getHeadForwardDirection(head);
+		if (headForward.dot(pushDir) < 0.0D) {
+			headForward = headForward.scale(-1.0D);
+		}
+
+		double pushLen = Math.sqrt(pushSqr);
+		double transfer = Mth.clamp(pushLen * REVERSE_PUSH_TRANSFER_SCALE * towardDot, 0.0D, REVERSE_PUSH_TRANSFER_MAX);
+		head.push(headForward.x * transfer, 0.0D, headForward.z * transfer);
 	}
 
 	public static void onMinecartRemoved(AbstractMinecart minecart) {
@@ -475,6 +520,40 @@ public final class BetterFurnaceTrainManager {
 			cursor = previous;
 		}
 		return cart;
+	}
+
+	private static Vec3 getHeadForwardDirection(AbstractMinecart head) {
+		AbstractMinecart next = getNextEntity(head);
+		if (next != null) {
+			Vec3 fromNextToHead = head.position().subtract(next.position());
+			if (fromNextToHead.lengthSqr() > 1.0E-6D) {
+				return normalizeHorizontal(fromNextToHead);
+			}
+		}
+		return getHorizontalHeading(head);
+	}
+
+	private static int countTrainCars(AbstractMinecart start) {
+		Set<UUID> visited = new HashSet<>();
+		Deque<AbstractMinecart> queue = new ArrayDeque<>();
+		queue.add(start);
+
+		while (!queue.isEmpty() && visited.size() <= MAX_TRAIN_SCAN) {
+			AbstractMinecart current = queue.removeFirst();
+			if (!visited.add(current.getUUID())) {
+				continue;
+			}
+			AbstractMinecart previous = getPreviousEntity(current);
+			AbstractMinecart next = getNextEntity(current);
+			if (previous != null) {
+				queue.addLast(previous);
+			}
+			if (next != null) {
+				queue.addLast(next);
+			}
+		}
+
+		return visited.size();
 	}
 
 	private static AbstractMinecart getTail(AbstractMinecart cart) {

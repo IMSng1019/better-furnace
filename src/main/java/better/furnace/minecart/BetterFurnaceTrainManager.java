@@ -371,14 +371,6 @@ public final class BetterFurnaceTrainManager {
 	}
 
 	private static Vec3 getVanillaCouplingHeading(AbstractMinecart minecart) {
-		if (minecart instanceof MinecartFurnace furnace) {
-			double pushSqr = furnace.xPush * furnace.xPush + furnace.zPush * furnace.zPush;
-			if (pushSqr > 1.0E-7D) {
-				double invLen = 1.0D / Math.sqrt(pushSqr);
-				return new Vec3(furnace.xPush * invLen, 0.0D, furnace.zPush * invLen);
-			}
-		}
-
 		float yawRad = minecart.getYRot() * 0.017453292F;
 		return new Vec3(Mth.cos(yawRad), 0.0D, Mth.sin(yawRad)).normalize();
 	}

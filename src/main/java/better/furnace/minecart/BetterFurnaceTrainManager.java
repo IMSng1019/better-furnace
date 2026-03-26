@@ -71,6 +71,9 @@ public final class BetterFurnaceTrainManager {
 		// Let directly linked neighbors still collide when they are compressed too close,
 		// so the physics layer can separate them and reduce corner overlap.
 		if (isDirectlyLinked(self, otherMinecart)) {
+			if (isApproachingNeighbor(self, otherMinecart)) {
+				return false;
+			}
 			return self.distanceToSqr(otherMinecart) >= MIN_LINK_DISTANCE_SQR;
 		}
 		return true;
@@ -417,6 +420,18 @@ public final class BetterFurnaceTrainManager {
 
 		float yawRad = minecart.getYRot() * 0.017453292F;
 		return new Vec3(Mth.cos(yawRad), 0.0D, Mth.sin(yawRad)).normalize();
+	}
+
+	private static boolean isApproachingNeighbor(AbstractMinecart first, AbstractMinecart second) {
+		Vec3 offset = new Vec3(second.getX() - first.getX(), 0.0D, second.getZ() - first.getZ());
+		double offsetSqr = offset.x * offset.x + offset.z * offset.z;
+		if (offsetSqr < 1.0E-6D) {
+			return true;
+		}
+
+		Vec3 relative = first.getDeltaMovement().subtract(second.getDeltaMovement());
+		double closing = relative.x * offset.x + relative.z * offset.z;
+		return closing > 0.0025D;
 	}
 
 	private static boolean isDirectlyLinked(AbstractMinecart first, AbstractMinecart second) {

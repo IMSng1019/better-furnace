@@ -202,6 +202,13 @@ public final class BetterFurnaceTrainManager {
 					minecart.changeDimension(targetLevel);
 				}
 			}
+
+			// 清理所有矿车的历史轨迹
+			for (AbstractMinecart minecart : orderedTrain) {
+				if (minecart instanceof BetterFurnaceTrainAccess access) {
+					access.betterFurnace$getTrackHistory().clear();
+				}
+			}
 		} finally {
 			GROUP_TELEPORTING.set(false);
 		}
@@ -600,6 +607,17 @@ public final class BetterFurnaceTrainManager {
 		Entity entity = level.getEntity(uuid);
 		if (entity instanceof AbstractMinecart minecart && !minecart.isRemoved()) {
 			return minecart;
+		}
+
+		// 跨维度查找
+		for (ServerLevel otherLevel : level.getServer().getAllLevels()) {
+			if (otherLevel == level) {
+				continue;
+			}
+			Entity crossDimEntity = otherLevel.getEntity(uuid);
+			if (crossDimEntity instanceof AbstractMinecart minecart && !minecart.isRemoved()) {
+				return minecart;
+			}
 		}
 		return null;
 	}

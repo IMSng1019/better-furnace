@@ -2,6 +2,8 @@ package better.furnace.mixin;
 
 import better.furnace.minecart.BetterFurnaceTrainAccess;
 import better.furnace.minecart.BetterFurnaceTrainManager;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.vehicle.AbstractMinecart;
 import net.minecraft.world.phys.Vec3;
@@ -20,9 +22,15 @@ import java.util.UUID;
  * - 列车链接运行态字段
  * - 接触链接与同组碰撞忽略
  * - 每 tick 跟随轨迹修正
+ * - NBT 持久化链接关系
  */
 @Mixin(AbstractMinecart.class)
 public abstract class AbstractMinecartMixin implements BetterFurnaceTrainAccess {
+	@Unique
+	private static final String BETTER_FURNACE$TAG_PREVIOUS_UUID = "BetterFurnacePreviousUuid";
+	@Unique
+	private static final String BETTER_FURNACE$TAG_NEXT_UUID = "BetterFurnaceNextUuid";
+
 	@Unique
 	private UUID betterFurnace$previousUuid;
 	@Unique
@@ -84,5 +92,25 @@ public abstract class AbstractMinecartMixin implements BetterFurnaceTrainAccess 
 	@Override
 	public void betterFurnace$setLinkCooldown(int cooldown) {
 		this.betterFurnace$linkCooldown = cooldown;
+	}
+
+	@Inject(method = "addAdditionalSaveData", at = @At("TAIL"))
+	private void betterFurnace$saveLinks(CompoundTag tag, CallbackInfo ci) {
+		if (this.betterFurnace$previousUuid != null) {
+			tag.putUUID(BETTER_FURNACE$TAG_PREVIOUS_UUID, this.betterFurnace$previousUuid);
+		}
+		if (this.betterFurnace$nextUuid != null) {
+			tag.putUUID(BETTER_FURNACE$TAG_NEXT_UUID, this.betterFurnace$nextUuid);
+		}
+	}
+
+	@Inject(method = "readAdditionalSaveData", at = @At("TAIL"))
+	private void betterFurnace$loadLinks(CompoundTag tag, CallbackInfo ci) {
+		if (tag.hasUUID(BETTER_FURNACE$TAG_PREVIOUS_UUID)) {
+			this.betterFurnace$previousUuid = tag.getUUID(BETTER_FURNACE$TAG_PREVIOUS_UUID);
+		}
+		if (tag.hasUUID(BETTER_FURNACE$TAG_NEXT_UUID)) {
+			this.betterFurnace$nextUuid = tag.getUUID(BETTER_FURNACE$TAG_NEXT_UUID);
+		}
 	}
 }

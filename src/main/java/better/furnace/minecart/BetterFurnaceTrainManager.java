@@ -95,20 +95,12 @@ public final class BetterFurnaceTrainManager {
 			return;
 		}
 
-		LinkCandidate best = null;
-
-		if (canLinkFollowingVanillaRule(first, second)) {
-			best = LinkCandidate.pickBetter(best, new LinkCandidate(first, second));
-		}
-		if (canLinkFollowingVanillaRule(second, first)) {
-			best = LinkCandidate.pickBetter(best, new LinkCandidate(second, first));
-		}
-
-		if (best == null) {
+		LinkCandidate candidate = pickDirectionalLinkCandidate(first, second);
+		if (candidate == null) {
 			return;
 		}
 
-		link(best.from, best.to);
+		link(candidate.from, candidate.to);
 	}
 
 	public static void onMinecartRemoved(AbstractMinecart minecart) {
@@ -341,6 +333,64 @@ public final class BetterFurnaceTrainManager {
 			return false;
 		}
 		return isVanillaCouplingAligned(from, to);
+	}
+
+	private static LinkCandidate pickDirectionalLinkCandidate(AbstractMinecart first, AbstractMinecart second) {
+		Vec3 axis = getDirectionalLinkAxis(first, second);
+		double firstProjection = first.getX() * axis.x + first.getZ() * axis.z;
+		double secondProjection = second.getX() * axis.x + second.getZ() * axis.z;
+
+		AbstractMinecart leader = firstProjection >= secondProjection ? first : second;
+		AbstractMinecart follower = leader == first ? second : first;
+		if (!canLinkFollowingVanillaRule(leader, follower)) {
+			if (!canLinkFollowingVanillaRule(follower, leader)) {
+				return null;
+			}
+			return new LinkCandidate(follower, leader);
+		}
+		return new LinkCandidate(leader, follower);
+	}
+
+	private static Vec3 getDirectionalLinkAxis(AbstractMinecart first, AbstractMinecart second) {
+		Vec3 offset = normalizeHorizontal(second.position().subtract(first.position()));
+		Vec3 axis = canonicalizeAxis(offset);
+
+		Vec3 totalMotion = first.getDeltaMovement().add(second.getDeltaMovement());
+		double totalMotionSqr = totalMotion.x * totalMotion.x + totalMotion.z * totalMotion.z;
+		if (totalMotionSqr > 1.0E-6D) {
+			if (axis.x * totalMotion.x + axis.z * totalMotion.z < 0.0D) {
+				axis = axis.scale(-1.0D);
+			}
+			return axis;
+		}
+
+		Vec3 totalPush = getFurnacePushHeading(first).add(getFurnacePushHeading(second));
+		double totalPushSqr = totalPush.x * totalPush.x + totalPush.z * totalPush.z;
+		if (totalPushSqr > 1.0E-6D && axis.x * totalPush.x + axis.z * totalPush.z < 0.0D) {
+			axis = axis.scale(-1.0D);
+		}
+		return axis;
+	}
+
+	private static Vec3 canonicalizeAxis(Vec3 axis) {
+		if (axis.x < 0.0D || (Math.abs(axis.x) <= 1.0E-6D && axis.z < 0.0D)) {
+			return axis.scale(-1.0D);
+		}
+		return axis;
+	}
+
+	private static Vec3 getFurnacePushHeading(AbstractMinecart minecart) {
+		if (!(minecart instanceof MinecartFurnace furnace)) {
+			return new Vec3(0.0D, 0.0D, 0.0D);
+		}
+
+		double pushSqr = furnace.xPush * furnace.xPush + furnace.zPush * furnace.zPush;
+		if (pushSqr <= 1.0E-7D) {
+			return new Vec3(0.0D, 0.0D, 0.0D);
+		}
+
+		double invLen = 1.0D / Math.sqrt(pushSqr);
+		return new Vec3(furnace.xPush * invLen, 0.0D, furnace.zPush * invLen);
 	}
 
 	private static boolean isVanillaCouplingAligned(AbstractMinecart from, AbstractMinecart to) {
@@ -591,19 +641,10 @@ public final class BetterFurnaceTrainManager {
 	private static final class LinkCandidate {
 		private final AbstractMinecart from;
 		private final AbstractMinecart to;
-		private final double distanceSqr;
 
 		private LinkCandidate(AbstractMinecart from, AbstractMinecart to) {
 			this.from = from;
 			this.to = to;
-			this.distanceSqr = from.distanceToSqr(to);
-		}
-
-		private static LinkCandidate pickBetter(LinkCandidate current, LinkCandidate incoming) {
-			if (current == null) {
-				return incoming;
-			}
-			return incoming.distanceSqr < current.distanceSqr ? incoming : current;
 		}
 	}
 }

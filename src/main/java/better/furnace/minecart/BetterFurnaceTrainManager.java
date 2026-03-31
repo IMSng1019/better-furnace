@@ -25,7 +25,7 @@ public final class BetterFurnaceTrainManager {
 	private static final int MAX_TRAIN_SCAN = 128;
 	private static final int MAX_TRAIN_CARS = 4;
 	private static final int LINK_COOLDOWN_TICKS = 20;
-	private static final double MAX_LINK_DISTANCE_SQR = 4.0D;
+	private static final double MAX_LINK_DISTANCE_SQR = 6.0D;
 	private static final double MIN_LINK_DISTANCE_SQR = 0.64D;
 	private static final double MIN_LINK_DISTANCE = Math.sqrt(MIN_LINK_DISTANCE_SQR);
 	private static final double MAX_COLLISION_LINK_DISTANCE_SQR = 6.25D;
@@ -184,6 +184,17 @@ public final class BetterFurnaceTrainManager {
 			access.betterFurnace$setNextUuid(null);
 		}
 
+		// Keep furnace minecart as train head: it should not have a previous link.
+		if (minecart instanceof MinecartFurnace && previous != null) {
+			unlink(previous, minecart);
+			previous = null;
+		}
+		// Clean up legacy/wrong topology: non-furnace carts must not point to furnace as next.
+		if (!(minecart instanceof MinecartFurnace) && next instanceof MinecartFurnace) {
+			unlink(minecart, next);
+			next = null;
+		}
+
 		if (previous != null && minecart.distanceToSqr(previous) > MAX_LINK_DISTANCE_SQR) {
 			unlink(previous, minecart);
 			return;
@@ -316,6 +327,10 @@ public final class BetterFurnaceTrainManager {
 
 	private static boolean canLinkFollowingVanillaRule(AbstractMinecart from, AbstractMinecart to) {
 		if (from == to) {
+			return false;
+		}
+		// Prevent linking into furnace as follower; furnace should stay at head side.
+		if (to instanceof MinecartFurnace) {
 			return false;
 		}
 		if (getNextEntity(from) != null || getPreviousEntity(to) != null) {

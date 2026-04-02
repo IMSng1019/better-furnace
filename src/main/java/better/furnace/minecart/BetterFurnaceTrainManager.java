@@ -35,6 +35,11 @@ public final class BetterFurnaceTrainManager {
 	}
 
 	public static void tick(AbstractMinecart minecart) {
+		preTick(minecart);
+		postTick(minecart);
+	}
+
+	public static void preTick(AbstractMinecart minecart) {
 		if (minecart.level().isClientSide) {
 			return;
 		}
@@ -48,6 +53,15 @@ public final class BetterFurnaceTrainManager {
 
 		validateLinks(minecart, access);
 		followPrevious(minecart, access);
+	}
+
+	public static void postTick(AbstractMinecart minecart) {
+		if (minecart.level().isClientSide) {
+			return;
+		}
+		if (!(minecart instanceof BetterFurnaceTrainAccess access)) {
+			return;
+		}
 
 		Deque<Vec3> history = access.betterFurnace$getTrackHistory();
 		history.addFirst(minecart.position());

@@ -40,9 +40,14 @@ public abstract class AbstractMinecartMixin implements BetterFurnaceTrainAccess 
 	@Unique
 	private int betterFurnace$linkCooldown;
 
+	@Inject(method = "tick", at = @At("HEAD"))
+	private void betterFurnace$onTickHead(CallbackInfo ci) {
+		BetterFurnaceTrainManager.preTick((AbstractMinecart) (Object) this);
+	}
+
 	@Inject(method = "tick", at = @At("TAIL"))
-	private void betterFurnace$onTick(CallbackInfo ci) {
-		BetterFurnaceTrainManager.tick((AbstractMinecart) (Object) this);
+	private void betterFurnace$onTickTail(CallbackInfo ci) {
+		BetterFurnaceTrainManager.postTick((AbstractMinecart) (Object) this);
 	}
 
 	@Inject(method = "push", at = @At("HEAD"), cancellable = true)

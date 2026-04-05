@@ -30,6 +30,9 @@ public final class BetterFurnaceTrainManager {
 	private static final double MIN_LINK_DISTANCE = Math.sqrt(MIN_LINK_DISTANCE_SQR);
 	private static final double MAX_COLLISION_LINK_DISTANCE_SQR = 6.25D;
 	private static final double FOLLOW_SPACING = 1.0D;
+	private static final double FOLLOW_BOOST_START_DISTANCE = 1.18D;
+	private static final double FOLLOW_BOOST_PER_BLOCK = 0.47D;
+	private static final double MAX_FOLLOW_BOOST = 0.58D;
 
 	private BetterFurnaceTrainManager() {
 	}
@@ -241,6 +244,8 @@ public final class BetterFurnaceTrainManager {
 		}
 
 		Vec3 current = follower.getDeltaMovement();
+		double leaderGap = Math.sqrt(follower.distanceToSqr(leader));
+		double catchUpBoost = computeCatchUpBoost(leaderGap);
 		double alongError = delta.x * tangent.x + delta.z * tangent.z;
 		Vec3 lateral = new Vec3(
 			delta.x - tangent.x * alongError,
@@ -249,8 +254,8 @@ public final class BetterFurnaceTrainManager {
 		);
 
 		double currentAlong = current.x * tangent.x + current.z * tangent.z;
-		double desiredAlong = Math.max(0.0D, leaderAlong + Mth.clamp(alongError * 0.20D, -0.16D, 0.34D));
-		double nextAlong = currentAlong + (desiredAlong - currentAlong) * 0.36D;
+		double desiredAlong = Math.max(0.0D, leaderAlong + Mth.clamp(alongError * 0.20D, -0.16D, 0.34D) + catchUpBoost);
+		double nextAlong = currentAlong + (desiredAlong - currentAlong) * (0.36D + Math.min(catchUpBoost * 0.40D, 0.24D));
 
 		double lateralX = Mth.clamp(lateral.x * 0.22D, -0.26D, 0.26D);
 		double lateralZ = Mth.clamp(lateral.z * 0.22D, -0.26D, 0.26D);
@@ -262,7 +267,7 @@ public final class BetterFurnaceTrainManager {
 		}
 
 		double leaderSpeed = Math.sqrt(leaderMotion.x * leaderMotion.x + leaderMotion.z * leaderMotion.z);
-		double maxSpeed = Math.max(leaderSpeed + 0.16D, 0.75D);
+		double maxSpeed = computeFollowSpeedCap(leaderSpeed, leaderGap);
 		double horizontalSpeed = Math.sqrt(nextHorizontal.x * nextHorizontal.x + nextHorizontal.z * nextHorizontal.z);
 		if (horizontalSpeed > maxSpeed) {
 			nextHorizontal = nextHorizontal.scale(maxSpeed / horizontalSpeed);
@@ -337,6 +342,19 @@ public final class BetterFurnaceTrainManager {
 			return new Vec3(0.0D, 0.0D, 0.0D);
 		}
 		return tangent.scale(along);
+	}
+
+	static double computeFollowSpeedCap(double leaderSpeed, double leaderGap) {
+		double extraSpeed = 0.16D + computeCatchUpBoost(leaderGap);
+		return Math.max(leaderSpeed + extraSpeed, 0.75D);
+	}
+
+	static double computeCatchUpBoost(double leaderGap) {
+		double overstretch = leaderGap - FOLLOW_BOOST_START_DISTANCE;
+		if (overstretch <= 0.0D) {
+			return 0.0D;
+		}
+		return Math.min(overstretch * FOLLOW_BOOST_PER_BLOCK, MAX_FOLLOW_BOOST);
 	}
 
 	private static void link(AbstractMinecart from, AbstractMinecart to) {

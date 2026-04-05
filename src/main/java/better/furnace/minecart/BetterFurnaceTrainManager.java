@@ -33,6 +33,8 @@ public final class BetterFurnaceTrainManager {
 	private static final double FOLLOW_BOOST_START_DISTANCE = 1.18D;
 	private static final double FOLLOW_BOOST_PER_BLOCK = 0.47D;
 	private static final double MAX_FOLLOW_BOOST = 0.58D;
+	private static final double MAX_LINK_DISTANCE = Math.sqrt(MAX_LINK_DISTANCE_SQR);
+	private static final double MAX_DYNAMIC_LINK_BONUS = 0.55D;
 
 	private BetterFurnaceTrainManager() {
 	}
@@ -54,7 +56,7 @@ public final class BetterFurnaceTrainManager {
 			access.betterFurnace$setLinkCooldown(access.betterFurnace$getLinkCooldown() - 1);
 		}
 
-		validateLinks(minecart, access);
+		validateLinkTopology(minecart, access);
 		followPrevious(minecart, access);
 	}
 
@@ -65,6 +67,8 @@ public final class BetterFurnaceTrainManager {
 		if (!(minecart instanceof BetterFurnaceTrainAccess access)) {
 			return;
 		}
+
+		validateLinkDistance(minecart, access);
 
 		Deque<Vec3> history = access.betterFurnace$getTrackHistory();
 		history.addFirst(minecart.position());
@@ -182,7 +186,7 @@ public final class BetterFurnaceTrainManager {
 		}
 	}
 
-	private static void validateLinks(AbstractMinecart minecart, BetterFurnaceTrainAccess access) {
+	private static void validateLinkTopology(AbstractMinecart minecart, BetterFurnaceTrainAccess access) {
 		AbstractMinecart previous = resolveMinecart(minecart, access.betterFurnace$getPreviousUuid());
 		AbstractMinecart next = resolveMinecart(minecart, access.betterFurnace$getNextUuid());
 
@@ -204,19 +208,32 @@ public final class BetterFurnaceTrainManager {
 			next = null;
 		}
 
-		if (previous != null && minecart.distanceToSqr(previous) > MAX_LINK_DISTANCE_SQR) {
-			unlink(previous, minecart);
-			return;
-		}
-		if (next != null && minecart.distanceToSqr(next) > MAX_LINK_DISTANCE_SQR) {
-			unlink(minecart, next);
-		}
-
 		if (previous instanceof BetterFurnaceTrainAccess previousAccess && !minecart.getUUID().equals(previousAccess.betterFurnace$getNextUuid())) {
 			previousAccess.betterFurnace$setNextUuid(minecart.getUUID());
 		}
 		if (next instanceof BetterFurnaceTrainAccess nextAccess && !minecart.getUUID().equals(nextAccess.betterFurnace$getPreviousUuid())) {
 			nextAccess.betterFurnace$setPreviousUuid(minecart.getUUID());
+		}
+	}
+
+	private static void validateLinkDistance(AbstractMinecart minecart, BetterFurnaceTrainAccess access) {
+		AbstractMinecart previous = resolveMinecart(minecart, access.betterFurnace$getPreviousUuid());
+		AbstractMinecart next = resolveMinecart(minecart, access.betterFurnace$getNextUuid());
+
+		if (previous != null) {
+			double allowedDistanceSqr = previous instanceof BetterFurnaceTrainAccess previousAccess
+				? computeAllowedLinkDistanceSqr(Math.abs(minecart.getY() - previous.getY()), computeTurnSeverity(previousAccess.betterFurnace$getTrackHistory()))
+				: MAX_LINK_DISTANCE_SQR;
+			if (minecart.distanceToSqr(previous) > allowedDistanceSqr) {
+				unlink(previous, minecart);
+				return;
+			}
+		}
+		if (next != null) {
+			double allowedDistanceSqr = computeAllowedLinkDistanceSqr(Math.abs(minecart.getY() - next.getY()), computeTurnSeverity(access.betterFurnace$getTrackHistory()));
+			if (minecart.distanceToSqr(next) > allowedDistanceSqr) {
+				unlink(minecart, next);
+			}
 		}
 	}
 
@@ -244,9 +261,9 @@ public final class BetterFurnaceTrainManager {
 		}
 
 		Vec3 current = follower.getDeltaMovement();
-		double leaderGap = Math.sqrt(follower.distanceToSqr(leader));
-		double catchUpBoost = computeCatchUpBoost(leaderGap);
 		double alongError = delta.x * tangent.x + delta.z * tangent.z;
+		double turnSeverity = computeTurnSeverity(leaderAccess.betterFurnace$getTrackHistory());
+		double catchUpBoost = computeCatchUpBoost(alongError, turnSeverity);
 		Vec3 lateral = new Vec3(
 			delta.x - tangent.x * alongError,
 			0.0D,
@@ -267,16 +284,24 @@ public final class BetterFurnaceTrainManager {
 		}
 
 		double leaderSpeed = Math.sqrt(leaderMotion.x * leaderMotion.x + leaderMotion.z * leaderMotion.z);
-		double maxSpeed = computeFollowSpeedCap(leaderSpeed, leaderGap);
+		double maxSpeed = computeFollowSpeedCap(leaderSpeed, catchUpBoost);
 		double horizontalSpeed = Math.sqrt(nextHorizontal.x * nextHorizontal.x + nextHorizontal.z * nextHorizontal.z);
 		if (horizontalSpeed > maxSpeed) {
 			nextHorizontal = nextHorizontal.scale(maxSpeed / horizontalSpeed);
 		}
 
+		Vec3 currentHorizontal = new Vec3(current.x, 0.0D, current.z);
 		nextHorizontal = constrainMotionToTrack(nextHorizontal, followerTangent);
 		nextHorizontal = applyNeighborSpacingGuard(follower, leader, nextHorizontal);
 		nextHorizontal = constrainMotionToTrack(nextHorizontal, followerTangent);
-		follower.setDeltaMovement(nextHorizontal.x, current.y, nextHorizontal.z);
+
+		double maxAdjustment = computeMaxFollowAdjustment(catchUpBoost, turnSeverity);
+		Vec3 adjustment = computeBoundedFollowAdjustment(currentHorizontal, nextHorizontal, maxAdjustment);
+		Vec3 adjustedHorizontal = currentHorizontal.add(adjustment);
+		adjustedHorizontal = constrainMotionToTrack(adjustedHorizontal, followerTangent);
+		adjustedHorizontal = applyNeighborSpacingGuard(follower, leader, adjustedHorizontal);
+		adjustedHorizontal = constrainMotionToTrack(adjustedHorizontal, followerTangent);
+		follower.setDeltaMovement(adjustedHorizontal.x, current.y, adjustedHorizontal.z);
 	}
 
 	private static PathSample samplePath(Vec3 fallback, Deque<Vec3> history, double distance) {
@@ -344,17 +369,73 @@ public final class BetterFurnaceTrainManager {
 		return tangent.scale(along);
 	}
 
-	static double computeFollowSpeedCap(double leaderSpeed, double leaderGap) {
-		double extraSpeed = 0.16D + computeCatchUpBoost(leaderGap);
+	static double computeFollowSpeedCap(double leaderSpeed, double catchUpBoost) {
+		double extraSpeed = 0.16D + catchUpBoost;
 		return Math.max(leaderSpeed + extraSpeed, 0.75D);
 	}
 
-	static double computeCatchUpBoost(double leaderGap) {
-		double overstretch = leaderGap - FOLLOW_BOOST_START_DISTANCE;
-		if (overstretch <= 0.0D) {
+	static double computeCatchUpBoost(double alongError, double turnSeverity) {
+		if (alongError <= 0.0D) {
 			return 0.0D;
 		}
-		return Math.min(overstretch * FOLLOW_BOOST_PER_BLOCK, MAX_FOLLOW_BOOST);
+
+		double lagBoost = Math.min(alongError * 0.75D, MAX_FOLLOW_BOOST * 0.78D);
+		double curveBonus = Math.min(turnSeverity * 0.18D, MAX_FOLLOW_BOOST * 0.30D);
+		return Math.min(lagBoost + curveBonus, MAX_FOLLOW_BOOST);
+	}
+
+	static double computeTurnSeverity(Deque<Vec3> history) {
+		if (history.size() < 3) {
+			return 0.0D;
+		}
+
+		Vec3 first = null;
+		Vec3 second = null;
+		Vec3 third = null;
+		for (Vec3 point : history) {
+			if (first == null) {
+				first = point;
+			} else if (second == null) {
+				second = point;
+			} else {
+				third = point;
+				break;
+			}
+		}
+		if (first == null || second == null || third == null) {
+			return 0.0D;
+		}
+
+		Vec3 firstSegment = normalizeHorizontal(second.subtract(first));
+		Vec3 secondSegment = normalizeHorizontal(third.subtract(second));
+		double dot = Mth.clamp(firstSegment.x * secondSegment.x + firstSegment.z * secondSegment.z, -1.0D, 1.0D);
+		return 1.0D - dot;
+	}
+
+	static double computeAllowedLinkDistanceSqr(double verticalGap, double turnSeverity) {
+		double verticalBonus = Mth.clamp(verticalGap * 0.25D, 0.0D, 0.18D);
+		double turnBonus = Mth.clamp(turnSeverity * 0.32D, 0.0D, 0.42D);
+		double bonus = Math.min(verticalBonus + turnBonus, MAX_DYNAMIC_LINK_BONUS);
+		double allowedDistance = MAX_LINK_DISTANCE + bonus;
+		return allowedDistance * allowedDistance;
+	}
+
+	static Vec3 computeBoundedFollowAdjustment(Vec3 currentHorizontal, Vec3 targetHorizontal, double maxAdjustment) {
+		Vec3 delta = new Vec3(targetHorizontal.x - currentHorizontal.x, 0.0D, targetHorizontal.z - currentHorizontal.z);
+		double length = Math.sqrt(delta.x * delta.x + delta.z * delta.z);
+		if (length <= 1.0E-6D || maxAdjustment <= 0.0D) {
+			return new Vec3(0.0D, 0.0D, 0.0D);
+		}
+		if (length <= maxAdjustment) {
+			return delta;
+		}
+		return delta.scale(maxAdjustment / length);
+	}
+
+	static double computeMaxFollowAdjustment(double catchUpBoost, double turnSeverity) {
+		double base = 0.10D + Math.min(catchUpBoost * 0.30D, 0.16D);
+		double curveBonus = Math.min(turnSeverity * 0.08D, 0.10D);
+		return base + curveBonus;
 	}
 
 	private static void link(AbstractMinecart from, AbstractMinecart to) {

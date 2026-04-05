@@ -36,7 +36,7 @@ public class BetterFurnaceMinecartScreen extends AbstractContainerScreen<BetterF
 
 		if (this.menu.isLit()) {
 			int flame = this.menu.getLitProgress();
-			guiGraphics.blit(TEXTURE, left + 81, top + 34 + 12 - flame, 176, 12 - flame, 14, flame + 1);
+			guiGraphics.blit(TEXTURE, left + 81, top + 30 + 12 - flame, 176, 12 - flame, 14, flame + 1);
 		}
 	}
 

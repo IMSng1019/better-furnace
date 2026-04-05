@@ -226,6 +226,7 @@ public final class BetterFurnaceTrainManager {
 		PathSample sample = samplePath(leader.position(), leaderAccess.betterFurnace$getTrackHistory(), FOLLOW_SPACING);
 		Vec3 target = sample.point();
 		Vec3 tangent = sample.tangent();
+		Vec3 followerTangent = getRecentTrackTangent(follower, followerAccess.betterFurnace$getTrackHistory());
 		Vec3 delta = target.subtract(follower.position());
 		double horizontal = Math.sqrt(delta.x * delta.x + delta.z * delta.z);
 		if (horizontal < 1.0E-3D) {
@@ -267,7 +268,9 @@ public final class BetterFurnaceTrainManager {
 			nextHorizontal = nextHorizontal.scale(maxSpeed / horizontalSpeed);
 		}
 
+		nextHorizontal = constrainMotionToTrack(nextHorizontal, followerTangent);
 		nextHorizontal = applyNeighborSpacingGuard(follower, leader, nextHorizontal);
+		nextHorizontal = constrainMotionToTrack(nextHorizontal, followerTangent);
 		follower.setDeltaMovement(nextHorizontal.x, current.y, nextHorizontal.z);
 	}
 
@@ -308,6 +311,32 @@ public final class BetterFurnaceTrainManager {
 		}
 		double invLen = 1.0D / Math.sqrt(horizontalSqr);
 		return new Vec3(vector.x * invLen, 0.0D, vector.z * invLen);
+	}
+
+	private static Vec3 getRecentTrackTangent(AbstractMinecart minecart, Deque<Vec3> history) {
+		Vec3 newer = minecart.position();
+		for (Vec3 point : history) {
+			Vec3 segment = newer.subtract(point);
+			double horizontalSqr = segment.x * segment.x + segment.z * segment.z;
+			if (horizontalSqr > 1.0E-6D) {
+				return normalizeHorizontal(segment);
+			}
+			newer = point;
+		}
+		return getHorizontalHeading(minecart);
+	}
+
+	static Vec3 constrainMotionToTrack(Vec3 proposed, Vec3 trackTangent) {
+		Vec3 tangent = normalizeHorizontal(trackTangent);
+		if (proposed.x * tangent.x + proposed.z * tangent.z < 0.0D) {
+			tangent = tangent.scale(-1.0D);
+		}
+
+		double along = proposed.x * tangent.x + proposed.z * tangent.z;
+		if (along <= 0.0D) {
+			return new Vec3(0.0D, 0.0D, 0.0D);
+		}
+		return tangent.scale(along);
 	}
 
 	private static void link(AbstractMinecart from, AbstractMinecart to) {
